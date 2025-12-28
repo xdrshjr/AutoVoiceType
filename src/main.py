@@ -24,9 +24,23 @@ def setup_logging(log_level: str = "INFO") -> None:
     Args:
         log_level: 日志级别
     """
+    # 检测是否在打包环境中运行
+    if getattr(sys, 'frozen', False):
+        # 打包环境：使用exe所在目录的log文件夹
+        base_dir = Path(sys.executable).parent
+        log_dir = base_dir / "log"
+    else:
+        # 开发环境：使用用户主目录下的.autovoicetype/logs
+        log_dir = Path.home() / ".autovoicetype" / "logs"
+    
     # 创建日志目录
-    log_dir = Path.home() / ".autovoicetype" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        # 如果创建失败，回退到用户主目录
+        log_dir = Path.home() / ".autovoicetype" / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        print(f"警告: 无法在目标目录创建日志文件夹，已回退到: {log_dir}")
     
     # 日志文件路径
     log_file = log_dir / f"autovoicetype_{time.strftime('%Y%m%d')}.log"
@@ -53,7 +67,9 @@ def setup_logging(log_level: str = "INFO") -> None:
     
     logger = logging.getLogger(__name__)
     logger.info(f"日志系统已初始化，日志级别: {log_level}")
+    logger.info(f"运行环境: {'打包环境' if getattr(sys, 'frozen', False) else '开发环境'}")
     logger.info(f"日志文件路径: {log_file}")
+    logger.debug(f"日志目录: {log_dir}")
 
 
 class AutoVoiceTypeApp:

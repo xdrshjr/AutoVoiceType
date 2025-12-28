@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QRect, pyqtProperty
-from PyQt5.QtGui import QPainter, QColor, QPen, QFont, QPalette
+from PyQt5.QtGui import QPainter, QColor, QPen, QPainterPath
 from PyQt5.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,10 @@ class RecordingWidget(QWidget):
     MARGIN_BOTTOM = 50  # 距离屏幕底部的距离
     
     # 动画参数
-    PULSE_MIN_SCALE = 0.95
-    PULSE_MAX_SCALE = 1.05
-    PULSE_DURATION = 1000  # 毫秒
+    PULSE_MIN_SCALE = 0.98
+    PULSE_MAX_SCALE = 1.02
+    PULSE_DURATION = 1500  # 毫秒
+    LIGHTNING_BLINK_INTERVAL = 500  # 闪电闪烁间隔（毫秒）
     
     # 样式参数
     BG_COLOR = QColor(40, 40, 40, 230)  # 半透明深色背景
@@ -42,8 +43,8 @@ class RecordingWidget(QWidget):
         
         self._scale = 1.0  # 缩放因子，用于脉动动画
         self._pulse_animation: Optional[QPropertyAnimation] = None
-        self._wave_offset = 0  # 波形偏移量
-        self._wave_timer: Optional[QTimer] = None
+        self._lightning_opacity = 1.0  # 闪电透明度，用于闪烁动画
+        self._lightning_timer: Optional[QTimer] = None
         
         logger.info("初始化录音动画窗口")
         
@@ -106,16 +107,17 @@ class RecordingWidget(QWidget):
         from PyQt5.QtCore import QEasingCurve
         self._pulse_animation.setEasingCurve(QEasingCurve.InOutQuad)
         
-        # 波形动画定时器
-        self._wave_timer = QTimer(self)
-        self._wave_timer.timeout.connect(self._update_wave)
-        self._wave_timer.setInterval(50)  # 50ms更新一次，约20fps
+        # 闪电闪烁动画定时器
+        self._lightning_timer = QTimer(self)
+        self._lightning_timer.timeout.connect(self._update_lightning)
+        self._lightning_timer.setInterval(self.LIGHTNING_BLINK_INTERVAL)
         
         logger.debug("动画效果初始化完成")
     
-    def _update_wave(self) -> None:
-        """更新波形偏移量"""
-        self._wave_offset = (self._wave_offset + 1) % 360
+    def _update_lightning(self) -> None:
+        """更新闪电闪烁效果"""
+        # 切换闪电透明度，实现闪烁效果
+        self._lightning_opacity = 1.0 if self._lightning_opacity < 0.5 else 0.3
         self.update()  # 触发重绘
     
     def _position_at_bottom_center(self) -> None:
@@ -143,8 +145,8 @@ class RecordingWidget(QWidget):
         if self._pulse_animation:
             self._pulse_animation.start()
         
-        if self._wave_timer:
-            self._wave_timer.start()
+        if self._lightning_timer:
+            self._lightning_timer.start()
         
         logger.debug("录音动画已启动")
     
@@ -156,15 +158,15 @@ class RecordingWidget(QWidget):
         if self._pulse_animation:
             self._pulse_animation.stop()
         
-        if self._wave_timer:
-            self._wave_timer.stop()
+        if self._lightning_timer:
+            self._lightning_timer.stop()
         
         # 隐藏窗口
         self.hide()
         
         # 重置状态
         self._scale = 1.0
-        self._wave_offset = 0
+        self._lightning_opacity = 1.0
         
         logger.debug("录音动画已停止")
     
@@ -198,44 +200,103 @@ class RecordingWidget(QWidget):
         painter.setBrush(self.BG_COLOR)
         painter.drawRoundedRect(scaled_rect, self.BORDER_RADIUS, self.BORDER_RADIUS)
         
-        # 绘制波形效果（在矩形顶部）
-        self._draw_wave(painter, scaled_rect)
+        # 绘制直线和闪电效果（在矩形顶部）
+        self._draw_line_with_lightning(painter, scaled_rect)
         
         # 父类绘制（文本标签）
         super().paintEvent(event)
     
-    def _draw_wave(self, painter: QPainter, rect: QRect) -> None:
+    def _draw_line_with_lightning(self, painter: QPainter, rect: QRect) -> None:
         """
-        绘制波形效果
+        绘制直线和闪电图标
         
         Args:
             painter: 绘图对象
             rect: 绘制矩形
         """
-        import math
+        # 设置画笔，用于绘制直线
+        pen = QPen(self.ACCENT_COLOR, 2)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
         
-        painter.setPen(QPen(self.ACCENT_COLOR, 2))
+        # 参数设置
+        padding = 20  # 左右内边距
+        line_y = rect.top() + 12  # 直线y坐标位置
         
-        # 波形参数
-        wave_height = 8
-        wave_length = 30
-        num_waves = rect.width() // wave_length + 2
+        # 计算直线的起点和终点
+        line_left = rect.left() + padding
+        line_right = rect.right() - padding
+        line_center_x = (line_left + line_right) / 2
         
-        # 绘制波形
-        points = []
-        for i in range(num_waves):
-            x = rect.left() + i * wave_length
-            # 使用正弦函数计算y坐标
-            y_offset = wave_height * math.sin(math.radians(self._wave_offset + i * 30))
-            y = rect.top() + 15 + y_offset
-            points.append((x, y))
+        # 绘制直线（分两段，中间留出闪电的位置）
+        lightning_width = 16  # 闪电宽度
+        lightning_gap = lightning_width / 2  # 闪电两侧的间距
         
-        # 绘制连续曲线
-        if len(points) > 1:
-            for i in range(len(points) - 1):
-                x1, y1 = points[i]
-                x2, y2 = points[i + 1]
-                painter.drawLine(int(x1), int(y1), int(x2), int(y2))
+        # 绘制左侧直线
+        painter.drawLine(int(line_left), int(line_y), int(line_center_x - lightning_gap), int(line_y))
+        
+        # 绘制右侧直线
+        painter.drawLine(int(line_center_x + lightning_gap), int(line_y), int(line_right), int(line_y))
+        
+        # 绘制闪电图标
+        self._draw_lightning(painter, line_center_x, line_y, lightning_width)
+    
+    def _draw_lightning(self, painter: QPainter, center_x: float, center_y: float, size: float) -> None:
+        """
+        绘制闪电图标
+        
+        Args:
+            painter: 绘图对象
+            center_x: 闪电中心x坐标
+            center_y: 闪电中心y坐标
+            size: 闪电大小
+        """
+        # 保存当前状态
+        painter.save()
+        
+        # 设置闪电颜色和透明度
+        lightning_color = QColor(self.ACCENT_COLOR)
+        lightning_color.setAlphaF(self._lightning_opacity)
+        
+        # 创建闪电路径
+        path = QPainterPath()
+        half_size = size / 2
+        
+        # 闪电形状：经典的闪电图标形状
+        # 顶部点（稍微偏左）
+        top_x = center_x - half_size * 0.2
+        top_y = center_y - half_size
+        
+        # 上中部左侧点
+        upper_left_x = center_x - half_size * 0.5
+        upper_left_y = center_y - half_size * 0.2
+        
+        # 中心点（最左侧）
+        center_left_x = center_x - half_size * 0.6
+        center_left_y = center_y
+        
+        # 下中部右侧点
+        lower_right_x = center_x + half_size * 0.4
+        lower_right_y = center_y + half_size * 0.2
+        
+        # 底部点（稍微偏右）
+        bottom_x = center_x + half_size * 0.2
+        bottom_y = center_y + half_size
+        
+        # 构建闪电路径（形成闪电形状）
+        path.moveTo(top_x, top_y)
+        path.lineTo(upper_left_x, upper_left_y)
+        path.lineTo(center_left_x, center_left_y)
+        path.lineTo(lower_right_x, lower_right_y)
+        path.lineTo(bottom_x, bottom_y)
+        
+        # 绘制闪电（使用填充而不是描边，看起来更饱满）
+        painter.setBrush(lightning_color)
+        painter.setPen(Qt.NoPen)
+        painter.drawPath(path)
+        
+        # 恢复状态
+        painter.restore()
     
     @pyqtProperty(float)
     def scale(self) -> float:
@@ -271,8 +332,8 @@ class RecordingWidget(QWidget):
         if self._pulse_animation:
             self._pulse_animation.stop()
         
-        if self._wave_timer:
-            self._wave_timer.stop()
+        if self._lightning_timer:
+            self._lightning_timer.stop()
         
         event.accept()
 
