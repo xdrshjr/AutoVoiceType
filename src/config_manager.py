@@ -19,7 +19,7 @@ class ConfigManager:
         "api": {
             "dashscope_api_key": "",
             "base_websocket_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-            "model": "fun-asr-realtime"
+            "model": "qwen3-asr-flash-realtime"
         },
         "audio": {
             "sample_rate": 16000,

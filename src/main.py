@@ -54,7 +54,6 @@ def setup_logging(log_level: str = "INFO") -> None:
     logger = logging.getLogger(__name__)
     logger.info(f"日志系统已初始化，日志级别: {log_level}")
     logger.info(f"日志文件路径: {log_file}")
-    你好，你好。是谁？你是谁？呃，我想知道这个是什么软件。
 
 
 class AutoVoiceTypeApp:
@@ -268,7 +267,8 @@ class AutoVoiceTypeApp:
         Args:
             text: 识别出的文本
         """
-        self.logger.info(f"识别结果: {text}")
+        self.logger.info(f"收到识别结果，文本长度: {len(text)} 字符")
+        self.logger.debug(f"识别结果内容: {text}")
         
         # 检查文本长度
         max_length = self.config_manager.get('input.max_input_length', 10000)
@@ -277,6 +277,7 @@ class AutoVoiceTypeApp:
                 f"识别文本长度({len(text)})超过最大限制({max_length})，将被截断"
             )
             text = text[:max_length]
+            self.logger.debug(f"截断后文本长度: {len(text)} 字符")
         
         # 自动输入到当前活动窗口
         if self.text_simulator:
@@ -285,26 +286,18 @@ class AutoVoiceTypeApp:
             # 获取活动窗口信息
             window_info = self.text_simulator.get_active_window_info()
             if window_info:
-                self.logger.info(f"目标窗口: {window_info.get('title', 'Unknown')}")
+                window_title = window_info.get('title', 'Unknown')
+                self.logger.info(f"目标窗口: {window_title}")
+                self.logger.debug(f"窗口详细信息: {window_info}")
             
             # 执行输入
             success = self.text_simulator.input_text(text)
             
             if success:
-                self.logger.info("文本输入成功")
-                
-                # 显示成功通知
-                if self.tray_app:
-                    # 限制通知文本长度
-                    preview_text = text[:50] + "..." if len(text) > 50 else text
-                    self.tray_app.show_message(
-                        "识别完成",
-                        f"已输入: {preview_text}",
-                        self.tray_app.tray_icon.Information,
-                        2000  # 2秒
-                    )
+                self.logger.info(f"文本输入成功，已输入 {len(text)} 字符到目标窗口")
+                # 成功时不显示通知，仅记录日志
             else:
-                self.logger.error("文本输入失败")
+                self.logger.error("文本输入失败，无法将识别结果输入到当前窗口")
                 
                 # 显示失败通知
                 if self.tray_app:
@@ -314,7 +307,7 @@ class AutoVoiceTypeApp:
                         self.tray_app.tray_icon.Warning
                     )
         else:
-            self.logger.warning("文本输入模拟器未初始化")
+            self.logger.warning("文本输入模拟器未初始化，无法输入识别结果")
     
     def on_settings_requested(self) -> None:
         """设置请求回调"""
