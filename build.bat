@@ -27,6 +27,103 @@ if errorlevel 1 (
     )
 )
 
+REM 检查所有关键依赖
+echo [检查] 检查关键依赖模块...
+python -c "import PyQt5" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] PyQt5 未安装，正在安装...
+    pip install PyQt5
+    if errorlevel 1 (
+        echo [错误] PyQt5 安装失败
+        pause
+        exit /b 1
+    )
+)
+python -c "import numpy" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] numpy 未安装，正在安装...
+    pip install numpy
+    if errorlevel 1 (
+        echo [错误] numpy 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import pyaudio" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] pyaudio 未安装，正在安装...
+    pip install pyaudio
+    if errorlevel 1 (
+        echo [错误] pyaudio 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import pynput" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] pynput 未安装，正在安装...
+    pip install pynput
+    if errorlevel 1 (
+        echo [错误] pynput 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import pyperclip" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] pyperclip 未安装，正在安装...
+    pip install pyperclip
+    if errorlevel 1 (
+        echo [错误] pyperclip 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import pyautogui" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] pyautogui 未安装，正在安装...
+    pip install pyautogui
+    if errorlevel 1 (
+        echo [错误] pyautogui 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import websocket" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] websocket-client 未安装，正在安装...
+    pip install websocket-client
+    if errorlevel 1 (
+        echo [错误] websocket-client 安装失败
+        pause
+        exit /b 1
+    )
+)
+
+python -c "import dashscope" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] dashscope 未安装，正在安装...
+    pip install dashscope
+    if errorlevel 1 (
+        echo [警告] dashscope 安装失败，但将继续构建
+    )
+)
+
+REM 检查 Windows 特定依赖
+python -c "import win32api" >nul 2>&1
+if errorlevel 1 (
+    echo [警告] pywin32 未安装，正在安装...
+    pip install pywin32
+    if errorlevel 1 (
+        echo [警告] pywin32 安装失败，但将继续构建（某些功能可能不可用）
+    )
+)
+
 echo [OK] 依赖检查完成
 echo.
 
@@ -53,6 +150,14 @@ if not exist "dist\AutoVoiceType\AutoVoiceType.exe" (
     exit /b 1
 )
 echo [OK] 可执行文件已生成: dist\AutoVoiceType\AutoVoiceType.exe
+
+REM 检查 Python DLL 是否存在
+if exist "dist\AutoVoiceType\_internal\python*.dll" (
+    echo [OK] Python DLL 已包含在打包文件中
+) else (
+    echo [警告] 未找到 Python DLL，这可能导致运行时错误
+    echo [提示] 请确保 PyInstaller 版本与 Python 版本兼容
+)
 echo.
 
 echo [5/5] 复制必要文件...
@@ -75,6 +180,12 @@ echo 提示：
 echo - 可以直接运行 dist\AutoVoiceType\AutoVoiceType.exe 测试
 echo - 如需创建安装程序，请运行 build_installer.bat
 echo - 或手动使用 Inno Setup 编译 installer.iss
+echo.
+echo 重要提示：
+echo - 如果运行时出现 DLL 加载错误：
+echo   1. 确保系统已安装 Visual C++ Redistributable
+echo   2. 检查 PyInstaller 版本是否与 Python 版本兼容
+echo   3. 尝试在干净的虚拟环境中重新构建
 echo.
 
 pause

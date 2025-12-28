@@ -10,7 +10,7 @@ AutoVoiceType - PyInstaller 打包配置文件
 
 import sys
 import os
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
 
 block_cipher = None
 
@@ -35,16 +35,45 @@ if os.path.exists(ASSETS_DIR):
 if os.path.exists(CONFIG_DIR):
     datas.append((CONFIG_DIR, 'config'))
 
+# 收集 PyQt5 的数据文件（插件、翻译等）
+try:
+    datas += collect_data_files('PyQt5')
+except Exception as e:
+    print(f"警告: 收集 PyQt5 数据文件时出错: {e}")
+
+# 收集 numpy 的数据文件
+try:
+    datas += collect_data_files('numpy')
+except Exception as e:
+    print(f"警告: 收集 numpy 数据文件时出错: {e}")
+
+# 收集 pyaudio 的数据文件
+try:
+    datas += collect_data_files('pyaudio')
+except Exception as e:
+    print(f"警告: 收集 pyaudio 数据文件时出错: {e}")
+
 # 收集 dashscope 的数据文件
-datas += collect_data_files('dashscope')
+try:
+    datas += collect_data_files('dashscope')
+except Exception as e:
+    print(f"警告: 收集 dashscope 数据文件时出错: {e}")
+
+# 收集 pyautogui 的数据文件
+try:
+    datas += collect_data_files('pyautogui')
+except Exception as e:
+    print(f"警告: 收集 pyautogui 数据文件时出错: {e}")
 
 # 隐藏导入（解决动态导入问题）
 hiddenimports = [
-    # PyQt5 模块
+    # PyQt5 核心模块
+    'PyQt5',
     'PyQt5.QtCore',
     'PyQt5.QtGui',
     'PyQt5.QtWidgets',
     'PyQt5.QtNetwork',
+    'PyQt5.sip',
     
     # 阿里云 DashScope
     'dashscope',
@@ -54,15 +83,26 @@ hiddenimports = [
     
     # 音频相关
     'pyaudio',
+    '_portaudio',  # pyaudio 的底层依赖
+    'numpy',
+    'numpy.core',
+    'numpy.core._multiarray_umath',
+    'numpy.core.multiarray',
+    'numpy.core.umath',
     
     # 键盘钩子
     'pynput',
     'pynput.keyboard',
+    'pynput.keyboard._win32',
     'pynput.mouse',
+    'pynput.mouse._win32',
     
     # 剪贴板和输入模拟
     'pyperclip',
     'pyautogui',
+    'pyautogui._pyautogui_win',
+    'pyautogui._pyautogui_x11',
+    'pyautogui._pyautogui_osx',
     
     # Windows API
     'win32api',
@@ -77,6 +117,14 @@ hiddenimports = [
     'websocket._app',
     'websocket._core',
     'websocket._socket',
+    'websocket._exceptions',
+    'websocket._handshake',
+    'websocket._http',
+    'websocket._logging',
+    'websocket._ssl_compat',
+    'websocket._url',
+    'websocket._utils',
+    'websocket-client',
     
     # 其他依赖
     'logging',
@@ -87,8 +135,24 @@ hiddenimports = [
     'queue',
 ]
 
-# 收集所有子模块
-hiddenimports += collect_submodules('dashscope')
+# 收集所有主要依赖的子模块
+dependency_modules = [
+    'PyQt5',
+    'pynput',
+    'dashscope',
+    'numpy',
+    'pyaudio',
+    'pyautogui',
+    'websocket',
+]
+
+for module_name in dependency_modules:
+    try:
+        submodules = collect_submodules(module_name)
+        hiddenimports += submodules
+        print(f"已收集 {module_name} 的 {len(submodules)} 个子模块")
+    except Exception as e:
+        print(f"警告: 收集 {module_name} 子模块时出错: {e}")
 
 # 分析主程序
 a = Analysis(
@@ -104,7 +168,7 @@ a = Analysis(
         # 排除不需要的模块以减小体积
         'tkinter',
         'matplotlib',
-        'numpy',
+        # 'numpy',  # 注释掉，因为可能被其他模块使用
         'pandas',
         'scipy',
         'PIL',
@@ -131,7 +195,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,  # 启用 UPX 压缩
+    upx=False,  # 禁用 UPX 压缩（避免 DLL 加载问题）
     console=False,  # 无控制台窗口（GUI模式）
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -149,7 +213,7 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,  # 禁用 UPX 压缩（避免 DLL 加载问题）
     upx_exclude=[],
     name='AutoVoiceType',
 )
@@ -157,6 +221,8 @@ coll = COLLECT(
 # 注意：
 # 1. 如果要生成单文件版本（启动较慢），可以在 EXE() 中添加 one_file=True
 # 2. 如果有图标文件，取消注释 icon= 行并确保 icon.ico 存在
-# 3. UPX 压缩需要安装 UPX (https://github.com/upx/upx/releases)
+# 3. UPX 压缩已禁用（upx=False），因为 UPX 压缩可能导致 "Failed to load python dll" 错误
+#    如果确实需要压缩，可以尝试启用，但需要确保 DLL 能正常加载
 # 4. 推荐使用目录模式（one-dir）以提高启动速度
+# 5. 如果遇到 DLL 加载问题，确保系统已安装 Visual C++ Redistributable
 
