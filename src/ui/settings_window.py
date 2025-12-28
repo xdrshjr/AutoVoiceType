@@ -3,6 +3,7 @@
 提供用户友好的配置界面
 """
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +13,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QListWidget, QStackedWidget, QPushButton,
     QMessageBox, QListWidgetItem, QLabel, QDialog,
-    QDialogButtonBox
+    QDialogButtonBox, QScrollArea, QFrame
 )
 
 from .settings_pages import (
@@ -121,7 +122,24 @@ class SettingsWindow(QMainWindow):
     
     def _load_stylesheet(self) -> None:
         """加载样式表"""
-        qss_file = Path(__file__).parent.parent.parent / "assets" / "styles.qss"
+        logger.debug("开始加载样式表")
+        
+        # 确定资源文件路径
+        # 在打包后的环境中，使用 sys._MEIPASS 获取临时解压目录
+        # 在开发环境中，使用相对路径
+        if getattr(sys, 'frozen', False):
+            # 打包后的环境（exe）
+            base_path = Path(sys._MEIPASS)
+            qss_file = base_path / "assets" / "styles.qss"
+            logger.debug(f"检测到打包环境，基础路径: {base_path}")
+        else:
+            # 开发环境（直接运行main.py）
+            base_path = Path(__file__).parent.parent.parent
+            qss_file = base_path / "assets" / "styles.qss"
+            logger.debug(f"检测到开发环境，基础路径: {base_path}")
+        
+        logger.debug(f"样式表文件路径: {qss_file}")
+        logger.debug(f"样式表文件是否存在: {qss_file.exists()}")
         
         if qss_file.exists():
             try:
@@ -129,10 +147,35 @@ class SettingsWindow(QMainWindow):
                     stylesheet = f.read()
                     self.setStyleSheet(stylesheet)
                 logger.info(f"样式表加载成功: {qss_file}")
+                logger.debug(f"样式表内容长度: {len(stylesheet)} 字符")
             except Exception as e:
-                logger.error(f"加载样式表失败: {e}")
+                logger.error(f"加载样式表失败: {e}", exc_info=True)
         else:
             logger.warning(f"样式表文件不存在: {qss_file}")
+            # 尝试其他可能的路径
+            alternative_paths = [
+                Path(__file__).parent.parent.parent / "assets" / "styles.qss",
+                Path.cwd() / "assets" / "styles.qss",
+            ]
+            if getattr(sys, 'frozen', False):
+                # 打包环境：尝试 exe 所在目录
+                exe_dir = Path(sys.executable).parent
+                alternative_paths.append(exe_dir / "assets" / "styles.qss")
+                alternative_paths.append(exe_dir / "_internal" / "assets" / "styles.qss")
+            
+            for alt_path in alternative_paths:
+                logger.debug(f"尝试备用路径: {alt_path}")
+                if alt_path.exists():
+                    try:
+                        with open(alt_path, 'r', encoding='utf-8') as f:
+                            stylesheet = f.read()
+                            self.setStyleSheet(stylesheet)
+                        logger.info(f"样式表从备用路径加载成功: {alt_path}")
+                        return
+                    except Exception as e:
+                        logger.warning(f"从备用路径加载样式表失败: {alt_path}, 错误: {e}")
+            
+            logger.error("所有样式表路径尝试均失败，界面将使用默认样式")
     
     def _init_ui(self) -> None:
         """初始化UI组件"""
@@ -157,14 +200,26 @@ class SettingsWindow(QMainWindow):
         right_layout.setSpacing(0)
         right_layout.setContentsMargins(0, 0, 0, 0)
         
+        # 创建滚动区域包装页面容器
+        scroll_area = QScrollArea()
+        scroll_area.setObjectName("PageScrollArea")
+        scroll_area.setWidgetResizable(True)  # 允许内容自适应大小
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 禁用横向滚动
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 需要时显示纵向滚动
+        scroll_area.setFrameShape(QFrame.NoFrame)  # 无边框
+        
         # 页面容器
         self.page_stack = QStackedWidget()
         self.page_stack.setObjectName("PageContainer")
-        right_layout.addWidget(self.page_stack, 1)
+        scroll_area.setWidget(self.page_stack)
+        
+        right_layout.addWidget(scroll_area, 1)
         
         # 底部按钮栏
         button_bar = self._create_button_bar()
         right_layout.addWidget(button_bar)
+        
+        logger.debug("滚动区域已创建并配置")
         
         main_layout.addWidget(right_widget, 9)
         
