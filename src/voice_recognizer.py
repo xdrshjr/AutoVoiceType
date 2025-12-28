@@ -226,13 +226,16 @@ class VoiceRecognizer:
             self.callback.stream = self.audio_stream
             
             # 5. 创建识别对象
+            model_name = self.api_config.get('model', 'qwen3-asr-flash-realtime')
+            logger.info(f"使用识别模型: {model_name}")
             self.recognition = Recognition(
-                model=self.api_config.get('model', 'fun-asr-realtime'),
+                model=model_name,
                 format=self.audio_config['format'],
                 sample_rate=self.audio_config['sample_rate'],
                 semantic_punctuation_enabled=self.api_config.get('semantic_punctuation_enabled', False),
                 callback=self.callback
             )
+            logger.debug(f"识别对象已创建，模型: {model_name}, 格式: {self.audio_config['format']}, 采样率: {self.audio_config['sample_rate']}")
             
             # 6. 启动识别（异步建立WebSocket连接）
             recognition_start_time = time.time()

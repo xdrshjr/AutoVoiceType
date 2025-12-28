@@ -378,7 +378,12 @@ class SettingsWindow(QMainWindow):
         
         # 记录待保存的变更
         self.pending_changes[key_path] = value
-        logger.debug(f"配置变更: {key_path} = {value}")
+        
+        # 根据配置项类型记录不同级别的日志
+        if key_path == "api.model":
+            logger.info(f"模型配置已变更: {value}")
+        else:
+            logger.debug(f"配置变更: {key_path} = {value}")
         
         # 更新状态标签
         self.status_label.setText(f"有 {len(self.pending_changes)} 项配置待保存")
@@ -419,11 +424,19 @@ class SettingsWindow(QMainWindow):
             QMessageBox.information(self, "提示", "没有需要保存的配置")
             return
         
-        logger.info(f"应用 {len(self.pending_changes)} 项配置变更")
+        changes_count = len(self.pending_changes)
+        logger.info(f"应用 {changes_count} 项配置变更")
         
         # 应用所有变更到配置管理器
         for key_path, value in self.pending_changes.items():
-            self.config_manager.set(key_path, value)
+            success = self.config_manager.set(key_path, value)
+            if success:
+                if key_path == "api.model":
+                    logger.info(f"模型配置已保存: {value}")
+                else:
+                    logger.debug(f"配置项已保存: {key_path} = {value}")
+            else:
+                logger.error(f"保存配置项失败: {key_path} = {value}")
         
         # 保存配置文件
         if self.config_manager.save_config():
@@ -436,7 +449,7 @@ class SettingsWindow(QMainWindow):
             # 2秒后清除状态文本
             QTimer.singleShot(2000, lambda: self.status_label.setText(""))
             
-            logger.info("配置保存成功")
+            logger.info(f"配置保存成功，共保存 {changes_count} 项配置")
             QMessageBox.information(self, "成功", "配置已保存并应用")
         else:
             logger.error("配置保存失败")

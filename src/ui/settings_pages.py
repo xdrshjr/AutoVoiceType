@@ -146,16 +146,11 @@ class BasicSettingsPage(BasePage):
         model_label = QLabel("识别模型:")
         model_label.setObjectName("FieldLabel")
         
-        self.model_combo = QComboBox()
-        self.model_combo.addItems([
-            "fun-asr-realtime",
-            "paraformer-realtime-v1"
-        ])
-        self.model_combo.currentTextChanged.connect(
-            lambda text: self.emit_config_change("api.model", text)
-        )
+        self.model_input = QLineEdit()
+        self.model_input.setPlaceholderText("请输入模型名称，例如: qwen3-asr-flash-realtime")
+        self.model_input.textChanged.connect(self._on_model_changed)
         
-        form_layout.addRow(model_label, self.model_combo)
+        form_layout.addRow(model_label, self.model_input)
     
     def _create_general_section(self) -> None:
         """创建通用设置区域"""
@@ -212,6 +207,12 @@ class BasicSettingsPage(BasePage):
         logger.info("请求验证API密钥")
         self.api_validation_requested.emit(api_key)
     
+    def _on_model_changed(self, model_name: str) -> None:
+        """模型名称变更处理"""
+        model_name = model_name.strip()
+        logger.debug(f"模型名称已变更: {model_name}")
+        self.emit_config_change("api.model", model_name)
+    
     def _on_language_changed(self, language: str) -> None:
         """语言变更处理"""
         lang_code = "zh-CN" if language == "简体中文" else "en-US"
@@ -230,10 +231,9 @@ class BasicSettingsPage(BasePage):
         api_key = config.get("api", {}).get("dashscope_api_key", "")
         self.api_key_input.setText(api_key)
         
-        model = config.get("api", {}).get("model", "fun-asr-realtime")
-        index = self.model_combo.findText(model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
+        model = config.get("api", {}).get("model", "qwen3-asr-flash-realtime")
+        self.model_input.setText(model)
+        logger.debug(f"加载模型配置: {model}")
         
         # 通用设置
         language = config.get("general", {}).get("language", "zh-CN")

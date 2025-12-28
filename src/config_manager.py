@@ -264,4 +264,22 @@ class ConfigManager:
             "restore_clipboard": self.get("input.restore_clipboard", True),
             "max_input_length": self.get("input.max_input_length", 10000)
         }
+    
+    def get_api_config(self) -> dict:
+        """
+        获取API配置
+        
+        Returns:
+            dict: API配置字典
+        """
+        model = self.get("api.model", "qwen3-asr-flash-realtime")
+        logger.debug(f"获取API配置，模型: {model}")
+        return {
+            "dashscope_api_key": self.get("api.dashscope_api_key", ""),
+            "base_websocket_url": self.get(
+                "api.base_websocket_url",
+                "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+            ),
+            "model": model
+        }
 
