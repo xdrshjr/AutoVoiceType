@@ -15,6 +15,7 @@ from hotkey_manager import HotkeyManager
 from voice_recognizer import VoiceRecognizer
 from text_simulator import TextSimulator
 from ui import TrayApp, RecordingWidget, AutoStartManager, SettingsWindow
+from ui.icon_utils import get_app_icon
 
 # 配置日志
 def setup_logging(log_level: str = "INFO") -> None:
@@ -447,9 +448,43 @@ def main():
     # 设置日志（使用默认级别，后续会根据配置更新）
     setup_logging()
     
+    logger = logging.getLogger(__name__)
+    
     # 创建Qt应用实例
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出应用
+    
+    # 设置应用图标
+    logger.info("=" * 60)
+    logger.info("设置应用图标（QApplication级别）")
+    logger.info("注意：在Windows上，任务栏图标优先使用exe文件本身的图标")
+    logger.info("如果exe没有图标，才会使用QApplication.setWindowIcon设置的图标")
+    logger.info("=" * 60)
+    
+    app_icon = get_app_icon()
+    if not app_icon.isNull():
+        qt_app.setWindowIcon(app_icon)
+        logger.info("QApplication图标设置成功")
+        
+        # 验证图标是否真的设置成功
+        default_icon = qt_app.windowIcon()
+        if default_icon.isNull():
+            logger.warning("警告：QApplication.windowIcon()返回空图标，设置可能未生效")
+        else:
+            available_sizes = default_icon.availableSizes()
+            if available_sizes:
+                logger.info(f"验证成功：QApplication图标已设置，可用尺寸: {[f'{s.width()}x{s.height()}' for s in available_sizes]}")
+            else:
+                logger.warning("警告：QApplication图标已设置但无可用尺寸")
+    else:
+        logger.error("=" * 60)
+        logger.error("应用图标设置失败，将使用默认图标")
+        logger.error("Windows任务栏可能会显示Python/Anaconda的默认图标")
+        logger.error("请检查：")
+        logger.error("  1. assets/logo.ico 文件是否存在")
+        logger.error("  2. 图标文件是否损坏")
+        logger.error("  3. 打包时图标文件是否被正确包含")
+        logger.error("=" * 60)
     
     # 创建应用实例
     app = AutoVoiceTypeApp(qt_app)

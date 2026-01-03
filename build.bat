@@ -127,6 +127,21 @@ if errorlevel 1 (
 echo [OK] 依赖检查完成
 echo.
 
+echo [1.5/5] 检查并生成图标文件...
+if not exist "assets\icon.ico" (
+    echo [信息] ICO 图标文件不存在，尝试从 SVG 生成...
+    python tools\convert_svg_to_ico.py
+    if errorlevel 1 (
+        echo [警告] ICO 图标生成失败，将使用默认图标
+        echo [提示] 如果已安装 Pillow，可以手动运行: python tools\convert_svg_to_ico.py
+    ) else (
+        echo [OK] ICO 图标文件已生成: assets\icon.ico
+    )
+) else (
+    echo [OK] ICO 图标文件已存在: assets\icon.ico
+)
+echo.
+
 echo [2/5] 清理旧的构建文件...
 if exist "build" rmdir /s /q "build"
 if exist "dist\AutoVoiceType" rmdir /s /q "dist\AutoVoiceType"

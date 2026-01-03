@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (
     QMessageBox
 )
 
+from .icon_utils import get_app_icon
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,26 +82,24 @@ class TrayApp(QObject):
     
     def _create_default_icon(self) -> QIcon:
         """
-        创建默认图标
-        如果没有图标文件，则生成一个简单的默认图标
+        创建应用图标
+        优先使用 logo.svg，如果加载失败则生成默认图标
         
         Returns:
             QIcon: 图标对象
         """
-        # 尝试加载图标文件
-        icon_paths = [
-            Path(__file__).parent.parent.parent / "assets" / "icon.ico",
-            Path(__file__).parent.parent.parent / "assets" / "icon.png",
-        ]
+        logger.debug("开始创建托盘图标")
         
-        for icon_path in icon_paths:
-            if icon_path.exists():
-                logger.info(f"加载图标文件: {icon_path}")
-                return QIcon(str(icon_path))
+        # 使用统一的图标加载函数
+        icon = get_app_icon()
         
-        # 如果没有图标文件，生成默认图标
-        logger.warning("未找到图标文件，使用默认生成的图标")
-        return self._generate_default_icon()
+        # 如果图标加载失败，生成默认图标
+        if icon.isNull():
+            logger.warning("应用图标加载失败，使用默认生成的图标")
+            return self._generate_default_icon()
+        
+        logger.info("托盘图标创建成功")
+        return icon
     
     def _generate_default_icon(self) -> QIcon:
         """

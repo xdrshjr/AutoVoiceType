@@ -10,7 +10,12 @@ AutoVoiceType - PyInstaller 打包配置文件
 
 import sys
 import os
+import logging
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_all
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 block_cipher = None
 
@@ -186,6 +191,16 @@ a = Analysis(
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # 生成可执行文件
+# 图标文件路径（如果存在）
+# 优先使用 logo.ico（Windows任务栏需要ICO格式）
+icon_path = os.path.join(ASSETS_DIR, 'logo.ico')
+if not os.path.exists(icon_path):
+    logger.warning(f"图标文件不存在: {icon_path}，将使用默认图标")
+    logger.info("提示：请确保 assets/logo.ico 文件存在，用于设置exe文件图标和Windows任务栏图标")
+    icon_path = None
+else:
+    logger.info(f"找到exe图标文件: {icon_path}")
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -202,8 +217,8 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # 图标文件（如果有）
-    # icon=os.path.join(ASSETS_DIR, 'icon.ico'),
+    # 图标文件（如果存在）
+    icon=icon_path if icon_path and os.path.exists(icon_path) else None,
 )
 
 # 收集所有文件到目录

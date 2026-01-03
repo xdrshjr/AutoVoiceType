@@ -23,6 +23,8 @@ from .settings_pages import (
     AdvancedSettingsPage,
     AboutPage
 )
+from .icon_utils import get_app_icon, get_icon_path
+from .windows_icon_utils import set_qt_window_icon_win32
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,36 @@ class FirstRunWizard(QDialog):
         self.setModal(True)
         self.setFixedSize(500, 300)
         
+        # 设置窗口图标
+        logger.debug("设置首次运行向导窗口图标")
+        window_icon = get_app_icon()
+        if not window_icon.isNull():
+            self.setWindowIcon(window_icon)
+            logger.debug("首次运行向导窗口图标设置成功")
+        else:
+            logger.warning("首次运行向导窗口图标设置失败")
+        
         self._init_ui()
         
         logger.info("首次运行向导已打开")
+    
+    def showEvent(self, event) -> None:
+        """
+        窗口显示事件处理
+        确保窗口图标在显示时被正确设置（包括Windows任务栏图标）
+        
+        Args:
+            event: 显示事件
+        """
+        super().showEvent(event)
+        
+        # 在Windows上，使用Windows API强制设置任务栏图标
+        if sys.platform == 'win32':
+            icon_path = get_icon_path()
+            if icon_path and icon_path.exists():
+                logger.debug("尝试使用Windows API设置首次运行向导的任务栏图标")
+                # 延迟一点时间，确保窗口已经完全显示
+                QTimer.singleShot(100, lambda: set_qt_window_icon_win32(self, str(icon_path.resolve())))
     
     def _init_ui(self) -> None:
         """初始化UI"""
@@ -108,6 +137,24 @@ class SettingsWindow(QMainWindow):
         self.setWindowTitle("AutoVoiceType - 设置")
         self.setMinimumSize(900, 600)
         self.resize(900, 600)
+        
+        # 设置窗口图标
+        logger.info("设置设置窗口图标")
+        window_icon = get_app_icon()
+        if not window_icon.isNull():
+            self.setWindowIcon(window_icon)
+            logger.info("设置窗口图标设置成功")
+            
+            # 验证图标是否真的设置成功
+            actual_icon = self.windowIcon()
+            if actual_icon.isNull():
+                logger.warning("警告：设置窗口图标设置后验证失败，可能未生效")
+            else:
+                available_sizes = actual_icon.availableSizes()
+                if available_sizes:
+                    logger.debug(f"设置窗口图标验证成功，可用尺寸: {[f'{s.width()}x{s.height()}' for s in available_sizes]}")
+        else:
+            logger.error("设置窗口图标设置失败，Windows任务栏可能显示默认图标")
         
         # 加载样式表
         self._load_stylesheet()
@@ -508,6 +555,51 @@ class SettingsWindow(QMainWindow):
         result = wizard.exec_()
         
         return result == QDialog.Accepted
+    
+    def showEvent(self, event) -> None:
+        """
+        窗口显示事件处理
+        确保窗口图标在显示时被正确设置
+        
+        Args:
+            event: 显示事件
+        """
+        # 确保窗口图标已设置（Windows任务栏可能需要）
+        if self.windowIcon().isNull():
+            logger.warning("检测到窗口图标为空，尝试重新设置")
+            window_icon = get_app_icon()
+            if not window_icon.isNull():
+                self.setWindowIcon(window_icon)
+                logger.info("窗口图标已重新设置")
+            else:
+                logger.error("无法重新设置窗口图标，图标文件可能不存在或损坏")
+        
+        # 在Windows上，使用Windows API强制设置任务栏图标
+        # 这可以确保任务栏显示正确的图标，即使exe文件本身没有图标
+        if sys.platform == 'win32':
+            icon_path = get_icon_path()
+            if icon_path and icon_path.exists():
+                logger.info("尝试使用Windows API设置任务栏图标")
+                # 延迟一点时间，确保窗口已经完全显示
+                QTimer.singleShot(100, lambda: self._set_win32_icon(str(icon_path.resolve())))
+        
+        super().showEvent(event)
+    
+    def _set_win32_icon(self, icon_path: str) -> None:
+        """
+        使用Windows API设置窗口图标
+        
+        Args:
+            icon_path: 图标文件路径
+        """
+        try:
+            success = set_qt_window_icon_win32(self, icon_path)
+            if success:
+                logger.info("Windows API图标设置成功")
+            else:
+                logger.debug("Windows API图标设置失败，将使用PyQt5默认图标")
+        except Exception as e:
+            logger.error(f"设置Windows API图标时发生异常: {e}", exc_info=True)
     
     def closeEvent(self, event) -> None:
         """
