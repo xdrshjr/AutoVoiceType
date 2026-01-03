@@ -89,68 +89,134 @@ class BasicSettingsPage(BasePage):
     
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        
+
         self.add_title("基础设置", "配置应用的基本参数和API密钥")
-        
+
+        # 提供商选择
+        self._create_provider_section()
+
         # API设置
         self._create_api_section()
-        
+
         # 通用设置
         self._create_general_section()
-        
+
         logger.info("基础设置页面初始化完成")
     
-    def _create_api_section(self) -> None:
-        """创建API设置区域"""
-        group = self.create_group("DashScope API 设置")
+    def _create_provider_section(self) -> None:
+        """创建提供商选择区域"""
+        group = self.create_group("语音识别提供商")
         form_layout = group.layout()
-        
-        # API密钥输入
-        api_key_label = QLabel("API 密钥:")
-        api_key_label.setObjectName("FieldLabel")
-        
-        api_key_layout = QHBoxLayout()
-        self.api_key_input = QLineEdit()
-        self.api_key_input.setPlaceholderText("请输入DashScope API密钥")
-        self.api_key_input.setEchoMode(QLineEdit.Password)
-        self.api_key_input.textChanged.connect(
+
+        # 提供商选择
+        provider_label = QLabel("选择提供商:")
+        provider_label.setObjectName("FieldLabel")
+
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItems(["Alibaba DashScope", "ByteDance Doubao"])
+        self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
+
+        form_layout.addRow(provider_label, self.provider_combo)
+
+        # 提示文本
+        self.provider_desc = QLabel("选择要使用的语音识别服务提供商")
+        self.provider_desc.setObjectName("HelpLabel")
+        self.provider_desc.setWordWrap(True)
+        form_layout.addRow("", self.provider_desc)
+
+    def _create_api_section(self) -> None:
+        """创建API设置区域（支持多个提供商）"""
+        # DashScope设置组
+        self.dashscope_group = self.create_group("DashScope API 设置")
+        dashscope_layout = self.dashscope_group.layout()
+
+        # DashScope API密钥输入
+        dashscope_key_label = QLabel("API 密钥:")
+        dashscope_key_label.setObjectName("FieldLabel")
+
+        dashscope_key_layout = QHBoxLayout()
+        self.dashscope_api_key_input = QLineEdit()
+        self.dashscope_api_key_input.setPlaceholderText("请输入DashScope API密钥")
+        self.dashscope_api_key_input.setEchoMode(QLineEdit.Password)
+        self.dashscope_api_key_input.textChanged.connect(
             lambda text: self.emit_config_change("api.dashscope_api_key", text)
         )
-        
+
         # 显示/隐藏按钮
-        self.toggle_key_btn = QPushButton("显示")
-        self.toggle_key_btn.setFixedWidth(60)
-        self.toggle_key_btn.clicked.connect(self._toggle_api_key_visibility)
-        
-        # 验证按钮
-        self.validate_btn = QPushButton("验证")
-        self.validate_btn.setObjectName("PrimaryButton")
-        self.validate_btn.setFixedWidth(80)
-        self.validate_btn.clicked.connect(self._validate_api_key)
-        
-        api_key_layout.addWidget(self.api_key_input)
-        api_key_layout.addWidget(self.toggle_key_btn)
-        api_key_layout.addWidget(self.validate_btn)
-        
-        form_layout.addRow(api_key_label, api_key_layout)
-        
-        # 帮助文本
-        help_label = QLabel(
+        self.dashscope_toggle_btn = QPushButton("显示")
+        self.dashscope_toggle_btn.setFixedWidth(60)
+        self.dashscope_toggle_btn.clicked.connect(self._toggle_dashscope_key_visibility)
+
+        dashscope_key_layout.addWidget(self.dashscope_api_key_input)
+        dashscope_key_layout.addWidget(self.dashscope_toggle_btn)
+
+        dashscope_layout.addRow(dashscope_key_label, dashscope_key_layout)
+
+        # DashScope帮助文本
+        dashscope_help_label = QLabel(
             "请前往 <a href='https://dashscope.aliyun.com'>阿里云DashScope控制台</a> 获取API密钥"
         )
-        help_label.setObjectName("HelpLabel")
-        help_label.setOpenExternalLinks(True)
-        form_layout.addRow("", help_label)
-        
-        # API模型
-        model_label = QLabel("识别模型:")
-        model_label.setObjectName("FieldLabel")
-        
-        self.model_input = QLineEdit()
-        self.model_input.setPlaceholderText("请输入模型名称，例如: qwen3-asr-flash-realtime")
-        self.model_input.textChanged.connect(self._on_model_changed)
-        
-        form_layout.addRow(model_label, self.model_input)
+        dashscope_help_label.setObjectName("HelpLabel")
+        dashscope_help_label.setOpenExternalLinks(True)
+        dashscope_layout.addRow("", dashscope_help_label)
+
+        # DashScope模型
+        dashscope_model_label = QLabel("识别模型:")
+        dashscope_model_label.setObjectName("FieldLabel")
+
+        self.dashscope_model_input = QLineEdit()
+        self.dashscope_model_input.setPlaceholderText("请输入模型名称，例如: qwen3-asr-flash-realtime")
+        self.dashscope_model_input.textChanged.connect(
+            lambda text: self.emit_config_change("api.dashscope_model", text)
+        )
+
+        dashscope_layout.addRow(dashscope_model_label, self.dashscope_model_input)
+
+        # Doubao设置组
+        self.doubao_group = self.create_group("Doubao API 设置")
+        doubao_layout = self.doubao_group.layout()
+
+        # Doubao APP ID
+        doubao_app_id_label = QLabel("APP ID:")
+        doubao_app_id_label.setObjectName("FieldLabel")
+
+        self.doubao_app_id_input = QLineEdit()
+        self.doubao_app_id_input.setPlaceholderText("请输入Doubao APP ID")
+        self.doubao_app_id_input.textChanged.connect(
+            lambda text: self.emit_config_change("api.doubao_app_id", text)
+        )
+
+        doubao_layout.addRow(doubao_app_id_label, self.doubao_app_id_input)
+
+        # Doubao Access Token
+        doubao_token_label = QLabel("Access Token:")
+        doubao_token_label.setObjectName("FieldLabel")
+
+        doubao_token_layout = QHBoxLayout()
+        self.doubao_access_token_input = QLineEdit()
+        self.doubao_access_token_input.setPlaceholderText("请输入Doubao Access Token")
+        self.doubao_access_token_input.setEchoMode(QLineEdit.Password)
+        self.doubao_access_token_input.textChanged.connect(
+            lambda text: self.emit_config_change("api.doubao_access_token", text)
+        )
+
+        # 显示/隐藏按钮
+        self.doubao_toggle_btn = QPushButton("显示")
+        self.doubao_toggle_btn.setFixedWidth(60)
+        self.doubao_toggle_btn.clicked.connect(self._toggle_doubao_token_visibility)
+
+        doubao_token_layout.addWidget(self.doubao_access_token_input)
+        doubao_token_layout.addWidget(self.doubao_toggle_btn)
+
+        doubao_layout.addRow(doubao_token_label, doubao_token_layout)
+
+        # Doubao帮助文本
+        doubao_help_label = QLabel(
+            "请前往 <a href='https://console.volcengine.com/speech'>火山引擎语音控制台</a> 获取凭证"
+        )
+        doubao_help_label.setObjectName("HelpLabel")
+        doubao_help_label.setOpenExternalLinks(True)
+        doubao_layout.addRow("", doubao_help_label)
     
     def _create_general_section(self) -> None:
         """创建通用设置区域"""
@@ -188,30 +254,34 @@ class BasicSettingsPage(BasePage):
         
         form_layout.addRow("", self.auto_start_check)
     
-    def _toggle_api_key_visibility(self) -> None:
-        """切换API密钥可见性"""
-        if self.api_key_input.echoMode() == QLineEdit.Password:
-            self.api_key_input.setEchoMode(QLineEdit.Normal)
-            self.toggle_key_btn.setText("隐藏")
+    def _on_provider_changed(self, index: int) -> None:
+        """提供商变更处理"""
+        providers = ["dashscope", "doubao"]
+        provider = providers[index]
+        logger.info(f"提供商已变更: {provider}")
+        self.emit_config_change("api.provider", provider)
+
+        # 显示/隐藏对应的API设置组
+        self.dashscope_group.setVisible(provider == "dashscope")
+        self.doubao_group.setVisible(provider == "doubao")
+
+    def _toggle_dashscope_key_visibility(self) -> None:
+        """切换DashScope API密钥可见性"""
+        if self.dashscope_api_key_input.echoMode() == QLineEdit.Password:
+            self.dashscope_api_key_input.setEchoMode(QLineEdit.Normal)
+            self.dashscope_toggle_btn.setText("隐藏")
         else:
-            self.api_key_input.setEchoMode(QLineEdit.Password)
-            self.toggle_key_btn.setText("显示")
-    
-    def _validate_api_key(self) -> None:
-        """验证API密钥"""
-        api_key = self.api_key_input.text().strip()
-        if not api_key:
-            QMessageBox.warning(self, "验证失败", "请先输入API密钥")
-            return
-        
-        logger.info("请求验证API密钥")
-        self.api_validation_requested.emit(api_key)
-    
-    def _on_model_changed(self, model_name: str) -> None:
-        """模型名称变更处理"""
-        model_name = model_name.strip()
-        logger.debug(f"模型名称已变更: {model_name}")
-        self.emit_config_change("api.model", model_name)
+            self.dashscope_api_key_input.setEchoMode(QLineEdit.Password)
+            self.dashscope_toggle_btn.setText("显示")
+
+    def _toggle_doubao_token_visibility(self) -> None:
+        """切换Doubao Access Token可见性"""
+        if self.doubao_access_token_input.echoMode() == QLineEdit.Password:
+            self.doubao_access_token_input.setEchoMode(QLineEdit.Normal)
+            self.doubao_toggle_btn.setText("隐藏")
+        else:
+            self.doubao_access_token_input.setEchoMode(QLineEdit.Password)
+            self.doubao_toggle_btn.setText("显示")
     
     def _on_language_changed(self, language: str) -> None:
         """语言变更处理"""
@@ -221,28 +291,44 @@ class BasicSettingsPage(BasePage):
     def load_config(self, config: dict) -> None:
         """
         加载配置到界面
-        
+
         Args:
             config: 配置字典
         """
         logger.debug("加载基础设置配置")
-        
-        # API设置
-        api_key = config.get("api", {}).get("dashscope_api_key", "")
-        self.api_key_input.setText(api_key)
-        
-        model = config.get("api", {}).get("model", "qwen3-asr-flash-realtime")
-        self.model_input.setText(model)
-        logger.debug(f"加载模型配置: {model}")
-        
+
+        # 提供商设置
+        provider = config.get("api", {}).get("provider", "dashscope")
+        provider_index = 0 if provider == "dashscope" else 1
+        self.provider_combo.setCurrentIndex(provider_index)
+
+        # DashScope API设置
+        dashscope_api_key = config.get("api", {}).get("dashscope_api_key", "")
+        self.dashscope_api_key_input.setText(dashscope_api_key)
+
+        dashscope_model = config.get("api", {}).get("dashscope_model", "qwen3-asr-flash-realtime")
+        self.dashscope_model_input.setText(dashscope_model)
+        logger.debug(f"加载DashScope模型配置: {dashscope_model}")
+
+        # Doubao API设置
+        doubao_app_id = config.get("api", {}).get("doubao_app_id", "")
+        self.doubao_app_id_input.setText(doubao_app_id)
+
+        doubao_access_token = config.get("api", {}).get("doubao_access_token", "")
+        self.doubao_access_token_input.setText(doubao_access_token)
+
+        # 显示/隐藏对应的API设置组
+        self.dashscope_group.setVisible(provider == "dashscope")
+        self.doubao_group.setVisible(provider == "doubao")
+
         # 通用设置
         language = config.get("general", {}).get("language", "zh-CN")
         lang_text = "简体中文" if language == "zh-CN" else "English"
         self.lang_combo.setCurrentText(lang_text)
-        
+
         log_level = config.get("general", {}).get("log_level", "INFO")
         self.log_level_combo.setCurrentText(log_level)
-        
+
         auto_start = config.get("general", {}).get("auto_start", False)
         self.auto_start_check.setChecked(auto_start)
 

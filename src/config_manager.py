@@ -17,9 +17,17 @@ class ConfigManager:
     # 默认配置
     DEFAULT_CONFIG = {
         "api": {
+            "provider": "dashscope",  # dashscope or doubao
+            # DashScope (Alibaba Cloud) settings
             "dashscope_api_key": "",
-            "base_websocket_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-            "model": "qwen3-asr-flash-realtime"
+            "dashscope_base_websocket_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+            "dashscope_model": "qwen3-asr-flash-realtime",
+            # Doubao (ByteDance) settings
+            "doubao_app_id": "",
+            "doubao_access_token": "",
+            "doubao_url": "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+            "doubao_resource_id": "volc.seedasr.sauc.duration",
+            "doubao_segment_duration": 200  # milliseconds
         },
         "audio": {
             "sample_rate": 16000,
@@ -193,20 +201,42 @@ class ConfigManager:
     
     def validate_api_key(self) -> bool:
         """
-        验证API密钥是否已配置且非空
-        
+        验证当前提供商的API密钥/凭证是否已配置且非空
+
         Returns:
-            bool: API密钥是否有效
+            bool: API密钥/凭证是否有效
         """
-        api_key = self.get("api.dashscope_api_key", "")
-        is_valid = bool(api_key and api_key.strip())
-        
-        if is_valid:
-            logger.info("API密钥验证通过")
+        provider = self.get("api.provider", "dashscope")
+
+        if provider == "dashscope":
+            api_key = self.get("api.dashscope_api_key", "")
+            is_valid = bool(api_key and api_key.strip())
+
+            if is_valid:
+                logger.info("DashScope API密钥验证通过")
+            else:
+                logger.warning("DashScope API密钥未配置或为空")
+
+            return is_valid
+
+        elif provider == "doubao":
+            app_id = self.get("api.doubao_app_id", "")
+            access_token = self.get("api.doubao_access_token", "")
+            is_valid = bool(
+                app_id and app_id.strip() and
+                access_token and access_token.strip()
+            )
+
+            if is_valid:
+                logger.info("Doubao凭证验证通过")
+            else:
+                logger.warning("Doubao APP ID或Access Token未配置或为空")
+
+            return is_valid
+
         else:
-            logger.warning("API密钥未配置或为空")
-        
-        return is_valid
+            logger.warning(f"未知的提供商: {provider}")
+            return False
     
     def is_first_run(self) -> bool:
         """
@@ -220,12 +250,21 @@ class ConfigManager:
     
     def get_api_key(self) -> str:
         """
-        获取DashScope API密钥
-        
+        获取DashScope API密钥（向后兼容）
+
         Returns:
             str: API密钥
         """
         return self.get("api.dashscope_api_key", "")
+
+    def get_provider(self) -> str:
+        """
+        获取当前使用的语音识别提供商
+
+        Returns:
+            str: 提供商名称 ('dashscope' 或 'doubao')
+        """
+        return self.get("api.provider", "dashscope")
     
     def get_audio_config(self) -> dict:
         """
@@ -267,19 +306,45 @@ class ConfigManager:
     
     def get_api_config(self) -> dict:
         """
-        获取API配置
-        
+        获取API配置（根据当前提供商返回相应配置）
+
         Returns:
             dict: API配置字典
         """
-        model = self.get("api.model", "qwen3-asr-flash-realtime")
-        logger.debug(f"获取API配置，模型: {model}")
-        return {
-            "dashscope_api_key": self.get("api.dashscope_api_key", ""),
-            "base_websocket_url": self.get(
-                "api.base_websocket_url",
-                "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
-            ),
-            "model": model
+        provider = self.get_provider()
+
+        config = {
+            "provider": provider,
+            "semantic_punctuation_enabled": self.get("recognition.semantic_punctuation_enabled", False)
         }
+
+        if provider == "dashscope":
+            model = self.get("api.dashscope_model", "qwen3-asr-flash-realtime")
+            logger.debug(f"获取DashScope API配置，模型: {model}")
+            config.update({
+                "dashscope_api_key": self.get("api.dashscope_api_key", ""),
+                "dashscope_base_websocket_url": self.get(
+                    "api.dashscope_base_websocket_url",
+                    "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+                ),
+                "dashscope_model": model
+            })
+
+        elif provider == "doubao":
+            logger.debug("获取Doubao API配置")
+            config.update({
+                "doubao_app_id": self.get("api.doubao_app_id", ""),
+                "doubao_access_token": self.get("api.doubao_access_token", ""),
+                "doubao_url": self.get(
+                    "api.doubao_url",
+                    "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async"
+                ),
+                "doubao_resource_id": self.get(
+                    "api.doubao_resource_id",
+                    "volc.seedasr.sauc.duration"
+                ),
+                "doubao_segment_duration": self.get("api.doubao_segment_duration", 200)
+            })
+
+        return config
 

@@ -145,21 +145,17 @@ class AutoVoiceTypeApp:
             
             # 4. 初始化语音识别器
             self.logger.info("正在初始化语音识别器...")
-            api_key = self.config_manager.get_api_key()
             audio_config = self.config_manager.get_audio_config()
             api_config = self.config_manager.get_api_config()
-            # 添加语义标点配置
-            api_config['semantic_punctuation_enabled'] = self.config_manager.get('recognition.semantic_punctuation_enabled', False)
-            
-            model_name = api_config.get('model', 'qwen3-asr-flash-realtime')
-            self.logger.info(f"初始化语音识别器，使用模型: {model_name}")
-            
+
+            provider = api_config.get('provider', 'dashscope')
+            self.logger.info(f"初始化语音识别器，使用提供商: {provider}")
+
             self.voice_recognizer = VoiceRecognizer(
-                api_key=api_key,
-                audio_config=audio_config,
-                api_config=api_config
+                api_config=api_config,
+                audio_config=audio_config
             )
-            
+
             # 设置识别结果回调
             self.voice_recognizer.set_result_callback(self.on_recognition_result)
             
@@ -365,24 +361,19 @@ class AutoVoiceTypeApp:
         # 重新创建语音识别器以应用新的模型配置
         # 只有在当前没有正在录音时才重新创建
         if self.voice_recognizer and not self.voice_recognizer.is_currently_recording():
-            old_model = self.voice_recognizer.api_config.get('model', 'unknown')
-            self.logger.info(f"重新创建语音识别器以应用新配置，旧模型: {old_model}")
-            
-            api_key = self.config_manager.get_api_key()
+            provider = self.config_manager.get_provider()
+            self.logger.info(f"重新创建语音识别器以应用新配置，提供商: {provider}")
+
             audio_config = self.config_manager.get_audio_config()
             api_config = self.config_manager.get_api_config()
-            # 添加语义标点配置
-            api_config['semantic_punctuation_enabled'] = self.config_manager.get('recognition.semantic_punctuation_enabled', False)
-            
-            new_model = api_config.get('model', 'qwen3-asr-flash-realtime')
-            self.logger.info(f"重新创建语音识别器，新模型配置: {new_model}")
-            
+
+            self.logger.info(f"重新创建语音识别器，新配置提供商: {provider}")
+
             self.voice_recognizer = VoiceRecognizer(
-                api_key=api_key,
-                audio_config=audio_config,
-                api_config=api_config
+                api_config=api_config,
+                audio_config=audio_config
             )
-            
+
             # 设置识别结果回调
             self.voice_recognizer.set_result_callback(self.on_recognition_result)
             self.logger.info("语音识别器已重新创建，新配置已生效")
