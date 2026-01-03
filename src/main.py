@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt
 
 from config_manager import ConfigManager
 from hotkey_manager import HotkeyManager
@@ -447,12 +447,46 @@ def main():
     """主函数"""
     # 设置日志（使用默认级别，后续会根据配置更新）
     setup_logging()
-    
+
     logger = logging.getLogger(__name__)
-    
+
+    # ==================== 高DPI支持配置 ====================
+    # 必须在创建QApplication之前设置高DPI属性
+    logger.info("配置高DPI缩放支持")
+
+    # 启用高DPI缩放（Qt 5.6+）
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    logger.debug("已启用 Qt.AA_EnableHighDpiScaling")
+
+    # 使用高DPI图标和图片（Qt 5.7+）
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    logger.debug("已启用 Qt.AA_UseHighDpiPixmaps")
+
     # 创建Qt应用实例
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出应用
+
+    # 记录DPI相关信息
+    primary_screen = QApplication.primaryScreen()
+    if primary_screen:
+        screen_geometry = primary_screen.geometry()
+        screen_available = primary_screen.availableGeometry()
+        device_pixel_ratio = primary_screen.devicePixelRatio()
+        logical_dpi = primary_screen.logicalDotsPerInch()
+        physical_dpi = primary_screen.physicalDotsPerInch()
+
+        logger.info("=" * 60)
+        logger.info("屏幕信息:")
+        logger.info(f"  屏幕分辨率: {screen_geometry.width()}x{screen_geometry.height()}")
+        logger.info(f"  可用区域: {screen_available.width()}x{screen_available.height()}")
+        logger.info(f"  设备像素比: {device_pixel_ratio}")
+        logger.info(f"  逻辑DPI: {logical_dpi}")
+        logger.info(f"  物理DPI: {physical_dpi}")
+        logger.info(f"  缩放比例: {int(device_pixel_ratio * 100)}%")
+        logger.info("=" * 60)
+    else:
+        logger.warning("无法获取主屏幕信息")
+    # ==================== 高DPI支持配置结束 ====================
     
     # 设置应用图标
     logger.info("=" * 60)

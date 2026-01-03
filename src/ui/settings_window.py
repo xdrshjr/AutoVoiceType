@@ -34,11 +34,17 @@ class FirstRunWizard(QDialog):
     
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        
+
         self.setWindowTitle("欢迎使用 AutoVoiceType")
         self.setModal(True)
-        self.setFixedSize(500, 300)
-        
+
+        # 首次运行向导固定大小
+        WIZARD_WIDTH = 600
+        WIZARD_HEIGHT = 400
+        self.setFixedSize(WIZARD_WIDTH, WIZARD_HEIGHT)
+
+        logger.info(f"首次运行向导窗口大小: {WIZARD_WIDTH}x{WIZARD_HEIGHT}")
+
         # 设置窗口图标
         logger.debug("设置首次运行向导窗口图标")
         window_icon = get_app_icon()
@@ -47,10 +53,10 @@ class FirstRunWizard(QDialog):
             logger.debug("首次运行向导窗口图标设置成功")
         else:
             logger.warning("首次运行向导窗口图标设置失败")
-        
+
         self._init_ui()
-        
-        logger.info("首次运行向导已打开")
+
+        logger.info("首次运行向导已初始化完成")
     
     def showEvent(self, event) -> None:
         """
@@ -75,13 +81,13 @@ class FirstRunWizard(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(20)
         layout.setContentsMargins(30, 30, 30, 30)
-        
+
         # 欢迎标题
         title = QLabel("🎉 欢迎使用 AutoVoiceType")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #34a853;")
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #34a853;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
-        
+
         # 说明文字
         description = QLabel(
             "AutoVoiceType 是一款智能语音输入工具，\n"
@@ -90,21 +96,21 @@ class FirstRunWizard(QDialog):
             "请点击下方按钮前往设置页面进行配置。"
         )
         description.setWordWrap(True)
-        description.setStyleSheet("font-size: 13px; color: #555;")
+        description.setStyleSheet("font-size: 14px; color: #555;")
         description.setAlignment(Qt.AlignCenter)
         layout.addWidget(description)
-        
+
         # 链接
         link_label = QLabel(
             '获取API密钥: <a href="https://dashscope.aliyun.com">阿里云DashScope控制台</a>'
         )
         link_label.setOpenExternalLinks(True)
         link_label.setAlignment(Qt.AlignCenter)
-        link_label.setStyleSheet("font-size: 12px; color: #888;")
+        link_label.setStyleSheet("font-size: 13px; color: #888;")
         layout.addWidget(link_label)
-        
+
         layout.addStretch()
-        
+
         # 按钮
         button_box = QDialogButtonBox(QDialogButtonBox.Ok)
         button_box.accepted.connect(self.accept)
@@ -132,11 +138,16 @@ class SettingsWindow(QMainWindow):
         self.pending_changes = {}  # 待保存的配置变更
         
         logger.info("初始化设置窗口")
-        
-        # 设置窗口属性
+
+        # 设置窗口属性 - 固定大小为1024x768
         self.setWindowTitle("AutoVoiceType - 设置")
-        self.setMinimumSize(900, 600)
-        self.resize(900, 600)
+
+        # 固定窗口大小为1024x768，不允许调整
+        WINDOW_WIDTH = 1024
+        WINDOW_HEIGHT = 768
+        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        logger.info(f"设置窗口固定尺寸: {WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         
         # 设置窗口图标
         logger.info("设置设置窗口图标")
@@ -560,10 +571,29 @@ class SettingsWindow(QMainWindow):
         """
         窗口显示事件处理
         确保窗口图标在显示时被正确设置
-        
+
         Args:
             event: 显示事件
         """
+        # 记录窗口实际尺寸和DPI信息
+        actual_size = self.size()
+        logger.info("=" * 60)
+        logger.info("设置窗口显示:")
+        logger.info(f"  窗口尺寸: {actual_size.width()}x{actual_size.height()}")
+
+        # 获取窗口所在屏幕的DPI信息
+        window_handle = self.windowHandle()
+        if window_handle:
+            screen = window_handle.screen()
+            if screen:
+                device_pixel_ratio = screen.devicePixelRatio()
+                logical_dpi = screen.logicalDotsPerInch()
+                logger.info(f"  设备像素比: {device_pixel_ratio}")
+                logger.info(f"  逻辑DPI: {logical_dpi}")
+                logger.info(f"  缩放比例: {int(device_pixel_ratio * 100)}%")
+                logger.debug(f"  物理DPI: {screen.physicalDotsPerInch()}")
+        logger.info("=" * 60)
+
         # 确保窗口图标已设置（Windows任务栏可能需要）
         if self.windowIcon().isNull():
             logger.warning("检测到窗口图标为空，尝试重新设置")
@@ -573,16 +603,16 @@ class SettingsWindow(QMainWindow):
                 logger.info("窗口图标已重新设置")
             else:
                 logger.error("无法重新设置窗口图标，图标文件可能不存在或损坏")
-        
+
         # 在Windows上，使用Windows API强制设置任务栏图标
         # 这可以确保任务栏显示正确的图标，即使exe文件本身没有图标
         if sys.platform == 'win32':
             icon_path = get_icon_path()
             if icon_path and icon_path.exists():
-                logger.info("尝试使用Windows API设置任务栏图标")
+                logger.debug("尝试使用Windows API设置任务栏图标")
                 # 延迟一点时间，确保窗口已经完全显示
                 QTimer.singleShot(100, lambda: self._set_win32_icon(str(icon_path.resolve())))
-        
+
         super().showEvent(event)
     
     def _set_win32_icon(self, icon_path: str) -> None:

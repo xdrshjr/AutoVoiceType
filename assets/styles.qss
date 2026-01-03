@@ -1,9 +1,10 @@
 /* AutoVoiceType - macOS Style QSS Stylesheet */
+/* 窗口固定尺寸: 1024x768 */
 
 /* ========== Global Styles ========== */
 * {
     font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-    font-size: 13px;
+    font-size: 14px;  /* 从13px调整为14px以适配1024x768分辨率 */
 }
 
 QWidget {
@@ -63,14 +64,14 @@ QWidget {
 
 /* ========== Page Title ========== */
 #PageTitle {
-    font-size: 24px;
+    font-size: 26px;  /* 从24px调整为26px */
     font-weight: bold;
     color: #1a1a1a;
     padding: 10px 0;
 }
 
 #PageDescription {
-    font-size: 13px;
+    font-size: 14px;  /* 从13px调整为14px */
     color: #666666;
     padding: 5px 0 20px 0;
 }
@@ -101,13 +102,13 @@ QLabel {
 }
 
 #FieldLabel {
-    font-size: 13px;
+    font-size: 14px;  /* 从13px调整为14px */
     color: #555555;
     font-weight: normal;
 }
 
 #HelpLabel {
-    font-size: 12px;
+    font-size: 13px;  /* 从12px调整为13px */
     color: #888888;
     font-style: italic;
 }
@@ -433,7 +434,7 @@ QToolTip {
     border: 1px solid #1a1a1a;
     border-radius: 4px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 13px;  /* 从12px调整为13px */
 }
 
 /* ========== Message Box ========== */
@@ -443,7 +444,7 @@ QMessageBox {
 
 QMessageBox QLabel {
     color: #333333;
-    font-size: 13px;
+    font-size: 14px;  /* 从13px调整为14px */
 }
 
 QMessageBox QPushButton {
