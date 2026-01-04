@@ -2,7 +2,7 @@
     "api": {
         "dashscope_api_key": "",
         "base_websocket_url": "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
-        "model": "qwen3-asr-flash-realtime"
+        "model": "fun-asr-realtime"
     },
     "audio": {
         "sample_rate": 16000,
