@@ -4,11 +4,12 @@ AutoVoiceType - 智能语音输入法
 """
 import logging
 import sys
+import threading
 import time
 from pathlib import Path
 
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal, QObject
 
 from config_manager import ConfigManager
 from hotkey_manager import HotkeyManager
@@ -73,16 +74,20 @@ def setup_logging(log_level: str = "INFO") -> None:
     logger.debug(f"日志目录: {log_dir}")
 
 
-class AutoVoiceTypeApp:
+class AutoVoiceTypeApp(QObject):
     """AutoVoiceType应用主类"""
-    
+
+    # 定义信号用于线程间通信
+    recording_start_failed = pyqtSignal(str)  # 录音启动失败信号
+
     def __init__(self, qt_app: QApplication):
         """
         初始化应用
-        
+
         Args:
             qt_app: Qt应用实例
         """
+        super().__init__()
         self.qt_app = qt_app
         self.config_manager: ConfigManager = None
         self.hotkey_manager: HotkeyManager = None
@@ -93,7 +98,11 @@ class AutoVoiceTypeApp:
         self.auto_start_manager: AutoStartManager = None
         self.settings_window: SettingsWindow = None
         self.logger = logging.getLogger(__name__)
-        
+        self._start_recording_thread = None  # 用于异步启动录音的线程
+
+        # 连接信号
+        self.recording_start_failed.connect(self._on_recording_start_failed)
+
         self.logger.info("=" * 60)
         self.logger.info("AutoVoiceType 应用启动")
         self.logger.info("=" * 60)
@@ -233,26 +242,48 @@ class AutoVoiceTypeApp:
     def on_hotkey_press(self) -> None:
         """快捷键按下回调 - 开始录音"""
         self.logger.info(">>> 检测到右Ctrl键按下，开始录音...")
-        
-        # 显示录音动画
+
+        # 显示录音动画（立即显示，给用户即时反馈）
         if self.recording_widget:
             self.recording_widget.show_recording()
-        
-        # 启动录音
-        if not self.voice_recognizer.start_recording():
-            self.logger.error("启动录音失败")
-            
-            # 隐藏动画
-            if self.recording_widget:
-                self.recording_widget.hide_recording()
-            
-            # 显示错误通知
-            if self.tray_app:
-                self.tray_app.show_message(
-                    "录音失败",
-                    "无法启动录音，请检查麦克风设置",
-                    self.tray_app.tray_icon.Warning
-                )
+
+        # 异步启动录音（不阻塞UI线程）
+        # 这样可以避免WebSocket连接建立时阻塞UI
+        self._start_recording_thread = threading.Thread(
+            target=self._async_start_recording,
+            daemon=True
+        )
+        self._start_recording_thread.start()
+
+    def _async_start_recording(self) -> None:
+        """在后台线程异步启动录音"""
+        try:
+            # 启动录音（会等待WebSocket连接建立，可能需要500-1000ms）
+            if not self.voice_recognizer.start_recording():
+                self.logger.error("启动录音失败")
+                # 使用信号通知主线程处理失败情况
+                self.recording_start_failed.emit("无法启动录音，请检查麦克风设置")
+            else:
+                self.logger.info("录音启动成功（异步）")
+        except Exception as e:
+            self.logger.error(f"异步启动录音异常: {e}", exc_info=True)
+            self.recording_start_failed.emit(f"录音启动异常: {str(e)}")
+
+    def _on_recording_start_failed(self, error_msg: str) -> None:
+        """处理录音启动失败（在主线程中执行）"""
+        self.logger.error(f"录音启动失败: {error_msg}")
+
+        # 隐藏动画
+        if self.recording_widget:
+            self.recording_widget.hide_recording()
+
+        # 显示错误通知
+        if self.tray_app:
+            self.tray_app.show_message(
+                "录音失败",
+                error_msg,
+                self.tray_app.tray_icon.Warning
+            )
     
     def on_hotkey_release(self) -> None:
         """快捷键释放回调 - 停止录音"""

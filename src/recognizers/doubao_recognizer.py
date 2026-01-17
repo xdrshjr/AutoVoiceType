@@ -74,6 +74,7 @@ class DoubaoRecognizer(BaseRecognizer):
         # Recognition state
         self.full_text = ""
         self._seq = 1
+        self._ws_ready = threading.Event()  # Event to signal WebSocket is ready
 
         logger.info(
             f"Doubao recognizer initialized: url={self.url}, resource_id={self.resource_id}, "
@@ -94,6 +95,9 @@ class DoubaoRecognizer(BaseRecognizer):
             self.audio_buffer = queue.Queue(maxsize=self.max_buffer_size)
             logger.debug(f"Audio buffer created, max size: {self.max_buffer_size} chunks")
 
+            # Reset WebSocket ready event
+            self._ws_ready.clear()
+
             # Mark as recording FIRST, before opening audio stream
             self.is_recording = True
 
@@ -103,7 +107,21 @@ class DoubaoRecognizer(BaseRecognizer):
             recognition_thread_time = (time.time() - start_time) * 1000
             logger.info(f"Recognition thread started for Doubao (elapsed: {recognition_thread_time:.2f}ms)")
 
-            # Open audio stream
+            # Wait for WebSocket connection to be ready before starting audio capture
+            logger.info("Waiting for Doubao WebSocket connection to be ready...")
+            wait_start = time.time()
+            ws_ready = self._ws_ready.wait(timeout=5.0)
+            wait_time = (time.time() - wait_start) * 1000
+
+            if not ws_ready:
+                logger.error("Doubao WebSocket connection timeout (5 seconds)")
+                self.is_recording = False
+                self.audio_buffer = None
+                return False
+
+            logger.info(f"Doubao WebSocket connection ready (wait time: {wait_time:.2f}ms)")
+
+            # Open audio stream AFTER WebSocket is ready
             try:
                 logger.info("Opening audio stream for Doubao...")
                 self.audio_mic = pyaudio.PyAudio()
@@ -122,6 +140,10 @@ class DoubaoRecognizer(BaseRecognizer):
                 self.audio_buffer = None
                 return False
 
+            # Add a small stabilization delay to ensure audio stream is fully ready
+            logger.debug("Waiting for audio stream to stabilize (100ms)...")
+            time.sleep(0.1)
+
             # Start recording thread
             self._record_thread = threading.Thread(target=self._record_audio_to_buffer, daemon=True)
             self._record_thread.start()
@@ -130,7 +152,6 @@ class DoubaoRecognizer(BaseRecognizer):
 
             total_time = (time.time() - start_time) * 1000
             logger.info(f"Doubao recording and recognition started successfully (total: {total_time:.2f}ms)")
-            logger.info("WebSocket connection is being established in background...")
             return True
 
         except Exception as e:
@@ -197,18 +218,14 @@ class DoubaoRecognizer(BaseRecognizer):
 
                     # Put audio data into buffer
                     try:
-                        if self.audio_buffer.full():
-                            # Buffer full, discard oldest data
-                            try:
-                                self.audio_buffer.get_nowait()
-                                logger.debug("Audio buffer full, discarding oldest data")
-                            except queue.Empty:
-                                pass
-
-                        self.audio_buffer.put_nowait(audio_data)
+                        # Use blocking put with timeout to avoid data loss
+                        # If buffer is full, wait briefly for space to become available
+                        self.audio_buffer.put(audio_data, timeout=0.5)
                         logger.debug(f"Audio data stored in buffer, current buffer size: {self.audio_buffer.qsize()}")
                     except queue.Full:
-                        logger.warning("Audio buffer full, cannot store new data")
+                        # This should rarely happen now that WebSocket is established first
+                        logger.warning("Audio buffer full, cannot store new data - possible audio streaming lag")
+                        # Don't discard the data - the stream consumer should be keeping up
 
                 except Exception as e:
                     if self.is_recording:
@@ -287,6 +304,10 @@ class DoubaoRecognizer(BaseRecognizer):
 
             self._seq += 1
 
+            # Signal that WebSocket is ready for audio streaming
+            self._ws_ready.set()
+            logger.info("Doubao WebSocket ready for audio streaming")
+
             # Start concurrent send/receive tasks
             send_task = asyncio.create_task(self._send_audio_task())
             recv_task = asyncio.create_task(self._receive_results_task())
@@ -313,28 +334,16 @@ class DoubaoRecognizer(BaseRecognizer):
             logger.info("Doubao audio sending task started")
             logger.info("Audio volume amplification enabled (2x amplification)")
 
-            # Wait a bit for WebSocket to be ready
-            await asyncio.sleep(0.1)
+            # WebSocket should already be ready at this point (set in _recognition_task)
+            # Just verify it's still ready
+            if not self._ws_ready.is_set():
+                logger.warning("WebSocket not ready in audio task, this should not happen")
+                await asyncio.sleep(0.1)  # Small fallback wait
 
-            # Phase 1: Get buffered audio
-            buffered_chunks = []
-            if self.audio_buffer:
-                buffer_size = self.audio_buffer.qsize()
-                if buffer_size > 0:
-                    logger.info(f"Collecting buffered audio from Doubao buffer, {buffer_size} chunks")
-                    while not self.audio_buffer.empty():
-                        try:
-                            chunk = self.audio_buffer.get_nowait()
-                            buffered_chunks.append(chunk)
-                        except queue.Empty:
-                            break
-                    logger.info(f"Collected {len(buffered_chunks)} buffered chunks")
+            # Collect and send realtime audio chunks
+            logger.info("Starting realtime audio streaming to Doubao")
 
-            # Phase 2: Continue collecting realtime audio until recording stops
-            logger.info("Collecting realtime audio from Doubao buffer")
-
-            # Combine buffered and new chunks, send periodically
-            audio_to_send = buffered_chunks
+            audio_to_send = []
             last_send_time = time.time()
             sent_count = 0
 

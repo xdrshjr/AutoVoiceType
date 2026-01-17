@@ -170,32 +170,7 @@ class DashScopeRecognizer(BaseRecognizer):
             self.audio_buffer = queue.Queue(maxsize=self.max_buffer_size)
             logger.debug(f"Audio buffer created, max size: {self.max_buffer_size} chunks")
 
-            # Open audio stream immediately
-            try:
-                logger.info("Opening audio stream for DashScope...")
-                self.audio_mic = pyaudio.PyAudio()
-                self.audio_stream = self.audio_mic.open(
-                    format=pyaudio.paInt16,
-                    channels=self.config.channels,
-                    rate=self.config.sample_rate,
-                    input=True,
-                    frames_per_buffer=self.config.chunk_size
-                )
-                audio_stream_time = (time.time() - start_time) * 1000
-                logger.info(f"Audio stream opened for DashScope (elapsed: {audio_stream_time:.2f}ms)")
-            except Exception as e:
-                logger.error(f"Failed to open audio stream for DashScope: {e}", exc_info=True)
-                self.audio_buffer = None
-                return False
-
-            # Start recording thread
-            self.is_recording = True
-            self._record_thread = threading.Thread(target=self._record_audio_to_buffer, daemon=True)
-            self._record_thread.start()
-            record_time = (time.time() - start_time) * 1000
-            logger.info(f"Recording thread started for DashScope (elapsed: {record_time:.2f}ms)")
-
-            # Create callback handler
+            # Create callback handler first (before opening audio stream)
             self.callback = DashScopeRecognitionCallback(
                 audio_config={
                     'sample_rate': self.config.sample_rate,
@@ -205,10 +180,10 @@ class DashScopeRecognizer(BaseRecognizer):
                 },
                 recognizer=self
             )
-            self.callback.mic = self.audio_mic
-            self.callback.stream = self.audio_stream
+            callback_time = (time.time() - start_time) * 1000
+            logger.debug(f"Callback handler created (elapsed: {callback_time:.2f}ms)")
 
-            # Create recognition object
+            # Create and start recognition object FIRST (establish WebSocket connection)
             provider_config = self.config.provider_config or {}
             model_name = provider_config.get('model', 'qwen3-asr-flash-realtime')
             logger.info(f"Using DashScope recognition model: {model_name}")
@@ -225,12 +200,61 @@ class DashScopeRecognizer(BaseRecognizer):
                 f"format={self.config.audio_format}, sample_rate={self.config.sample_rate}"
             )
 
-            # Start recognition
-            recognition_time = time.time()
+            # Start recognition to establish WebSocket connection
+            recognition_start = time.time()
             self.recognition.start()
-            logger.info(f"DashScope recognition service started (elapsed: {(recognition_time - start_time) * 1000:.2f}ms)")
+            logger.info(f"DashScope recognition service started (elapsed: {(recognition_start - start_time) * 1000:.2f}ms)")
 
-            # Start audio streaming thread
+            # Wait for WebSocket connection to be ready BEFORE starting audio capture
+            logger.info("Waiting for DashScope WebSocket connection to be ready...")
+            wait_start = time.time()
+            connection_ready = self.callback.connection_ready.wait(timeout=5.0)
+            wait_time = (time.time() - wait_start) * 1000
+
+            if not connection_ready:
+                logger.error("DashScope WebSocket connection timeout (5 seconds)")
+                self._cleanup_audio_resources()
+                return False
+
+            logger.info(f"DashScope WebSocket connection ready (wait time: {wait_time:.2f}ms)")
+
+            # Now that WebSocket is ready, open audio stream
+            try:
+                logger.info("Opening audio stream for DashScope...")
+                self.audio_mic = pyaudio.PyAudio()
+                self.audio_stream = self.audio_mic.open(
+                    format=pyaudio.paInt16,
+                    channels=self.config.channels,
+                    rate=self.config.sample_rate,
+                    input=True,
+                    frames_per_buffer=self.config.chunk_size
+                )
+                audio_stream_time = (time.time() - start_time) * 1000
+                logger.info(f"Audio stream opened for DashScope (elapsed: {audio_stream_time:.2f}ms)")
+            except Exception as e:
+                logger.error(f"Failed to open audio stream for DashScope: {e}", exc_info=True)
+                self.audio_buffer = None
+                if self.recognition:
+                    self.recognition.stop()
+                    self.recognition = None
+                return False
+
+            # Link audio resources to callback
+            self.callback.mic = self.audio_mic
+            self.callback.stream = self.audio_stream
+
+            # Add a small stabilization delay to ensure audio stream is fully ready
+            logger.debug("Waiting for audio stream to stabilize (100ms)...")
+            time.sleep(0.1)
+
+            # NOW start recording thread (audio capture begins here)
+            self.is_recording = True
+            self._record_thread = threading.Thread(target=self._record_audio_to_buffer, daemon=True)
+            self._record_thread.start()
+            record_time = (time.time() - start_time) * 1000
+            logger.info(f"Recording thread started for DashScope (elapsed: {record_time:.2f}ms)")
+
+            # Start audio streaming thread (this will send immediately since WebSocket is ready)
             self._audio_thread = threading.Thread(target=self._send_audio_stream, daemon=True)
             self._audio_thread.start()
 
@@ -302,18 +326,14 @@ class DashScopeRecognizer(BaseRecognizer):
 
                     # Put audio data into buffer
                     try:
-                        if self.audio_buffer.full():
-                            # Buffer full, discard oldest data
-                            try:
-                                self.audio_buffer.get_nowait()
-                                logger.debug("Audio buffer full, discarding oldest data")
-                            except queue.Empty:
-                                pass
-
-                        self.audio_buffer.put_nowait(audio_data)
+                        # Use blocking put with timeout to avoid data loss
+                        # If buffer is full, wait briefly for space to become available
+                        self.audio_buffer.put(audio_data, timeout=0.5)
                         logger.debug(f"Audio data stored in buffer, current buffer size: {self.audio_buffer.qsize()}")
                     except queue.Full:
-                        logger.warning("Audio buffer full, cannot store new data")
+                        # This should rarely happen now that WebSocket is established first
+                        logger.warning("Audio buffer full, cannot store new data - possible audio streaming lag")
+                        # Don't discard the data - the stream consumer should be keeping up
 
                 except Exception as e:
                     if self.is_recording:
@@ -332,70 +352,28 @@ class DashScopeRecognizer(BaseRecognizer):
             logger.debug("DashScope audio streaming thread started")
             logger.info("Audio volume amplification enabled (2x amplification)")
 
-            # Wait for WebSocket connection
-            if self.callback:
-                logger.info("Waiting for DashScope WebSocket connection...")
-                wait_start = time.time()
-                connection_ready = self.callback.connection_ready.wait(timeout=5.0)
-                wait_time = (time.time() - wait_start) * 1000
-
-                if not connection_ready:
-                    logger.error("DashScope WebSocket connection timeout (5 seconds)")
-                    return
-
-                logger.info(f"DashScope WebSocket connection established (wait time: {wait_time:.2f}ms)")
-            else:
+            # Verify prerequisites
+            if not self.callback:
                 logger.error("Callback handler not initialized")
                 return
 
-            # Check recognition object
             if not self.recognition:
                 logger.error("Recognition object not initialized")
                 return
 
-            # Phase 1: Send buffered audio data
-            if self.audio_buffer:
-                buffer_size = self.audio_buffer.qsize()
-                if buffer_size > 0:
-                    logger.info(f"Sending buffered audio data to DashScope, {buffer_size} chunks")
-                    buffer_start = time.time()
+            # WebSocket should already be connected (verified in start_recording)
+            # Double-check connection is ready
+            if not self.callback.connection_ready.is_set():
+                logger.warning("WebSocket connection not ready, waiting...")
+                connection_ready = self.callback.connection_ready.wait(timeout=2.0)
+                if not connection_ready:
+                    logger.error("WebSocket connection timeout in audio thread")
+                    return
 
-                    sent_count = 0
-                    while not self.audio_buffer.empty() and self.is_recording:
-                        try:
-                            audio_data = self.audio_buffer.get_nowait()
+            logger.info("Starting realtime audio streaming to DashScope")
 
-                            if not self.is_recording or not self.recognition:
-                                break
-
-                            # Amplify audio before sending
-                            amplified_audio_data = self._amplify_audio(audio_data)
-
-                            # Send to recognition service
-                            self.recognition.send_audio_frame(amplified_audio_data)
-                            sent_count += 1
-                            logger.debug(f"Sent buffered audio {sent_count}/{buffer_size} to DashScope")
-
-                        except queue.Empty:
-                            break
-                        except InvalidParameter as e:
-                            if "Speech recognition has stopped" in str(e):
-                                logger.debug("DashScope recognition stopped, stopping buffer send")
-                            else:
-                                logger.warning(f"Parameter error sending buffered audio to DashScope: {e}")
-                            break
-                        except Exception as e:
-                            logger.error(f"Error sending buffered audio to DashScope: {e}", exc_info=True)
-                            break
-
-                    buffer_time = (time.time() - buffer_start) * 1000
-                    logger.info(f"Buffered audio sent to DashScope, {sent_count} chunks (elapsed: {buffer_time:.2f}ms)")
-                else:
-                    logger.debug("Buffer empty, no cached data to send")
-
-            # Phase 2: Send realtime audio data
-            logger.info("Sending realtime audio data from buffer to DashScope")
-            realtime_count = 0
+            # Send realtime audio data
+            sent_count = 0
 
             while self.is_recording and self.audio_buffer is not None:
                 try:
@@ -417,10 +395,10 @@ class DashScopeRecognizer(BaseRecognizer):
 
                     # Send to recognition service
                     self.recognition.send_audio_frame(amplified_audio_data)
-                    realtime_count += 1
+                    sent_count += 1
 
-                    if realtime_count % 10 == 0:  # Log every 10 chunks
-                        logger.debug(f"Sent {realtime_count} realtime audio chunks to DashScope")
+                    if sent_count % 10 == 0:  # Log every 10 chunks
+                        logger.debug(f"Sent {sent_count} realtime audio chunks to DashScope")
 
                 except InvalidParameter as e:
                     if "Speech recognition has stopped" in str(e):
@@ -435,7 +413,7 @@ class DashScopeRecognizer(BaseRecognizer):
                         logger.debug(f"Error sending audio (likely due to stopping): {e}")
                     break
 
-            logger.info(f"Realtime audio sending complete, sent {realtime_count} chunks to DashScope")
+            logger.info(f"Realtime audio sending complete, sent {sent_count} chunks to DashScope")
             logger.debug("DashScope audio streaming thread ended")
         except Exception as e:
             logger.error(f"DashScope audio streaming thread exception: {e}", exc_info=True)

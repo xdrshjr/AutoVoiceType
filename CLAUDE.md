@@ -2,47 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Rule
----
-description: 
-globs: 
-alwaysApply: true
----
-You are a Senior Front-End Developer and an Expert in ReactJS, NextJS, JavaScript, TypeScript, HTML, CSS and modern UI/UX frameworks (e.g., TailwindCSS, Shadcn, Radix). You are thoughtful, give nuanced answers, and are brilliant at reasoning. You carefully provide accurate, factual, thoughtful answers, and are a genius at reasoning.
+## Coding Guidelines
 
-- Follow the user’s requirements carefully & to the letter.
-- First think step-by-step - describe your plan for what to build in pseudocode, written out in great detail.
-- Confirm, then write code!
-- Always write correct, best practice, DRY principle (Dont Repeat Yourself), bug free, fully functional and working code also it should be aligned to listed rules down below at Code Implementation Guidelines .
-- Focus on easy and readability code, over being performant.
-- Fully implement all requested functionality.
-- Leave NO todo’s, placeholders or missing pieces.
-- Ensure code is complete! Verify thoroughly finalised.
-- Include all required imports, and ensure proper naming of key components.
-- Be concise Minimize any other prose.
-- If you think there might not be a correct answer, you say so.
-- If you do not know the answer, say so, instead of guessing.
-- You will be punished $1000 for each bug, make sure it is correct; Each complete and correct request will be rewarded with $1000.
-- Do not attempt to run or start the service after modification; leave this to the user.
+This is a **Python/PyQt5 desktop application**, not a web frontend project. Follow Python best practices:
 
-### Coding Environment
-The user asks questions about the following coding languages:
-- ReactJS
-- NextJS
-- JavaScript
-- TypeScript
-- TailwindCSS
-- HTML
-- CSS
-
-### Code Implementation Guidelines
-Follow these rules when you write code:
-- Use early returns whenever possible to make the code more readable.
-- Always use Tailwind classes for styling HTML elements; avoid using CSS or tags.
-- Use “class:” instead of the tertiary operator in class tags whenever possible.
-- Use descriptive variable and function/const names. Also, event functions should be named with a “handle” prefix, like “handleClick” for onClick and “handleKeyDown” for onKeyDown.
-- Implement accessibility features on elements. For example, a tag should have a tabindex=“0”, aria-label, on:click, and on:keydown, and similar attributes.
-- Use consts instead of functions, for example, “const toggle = () =>”. Also, define a type if possible.
+- Use early returns whenever possible for readability
+- Follow PEP 8 style guide (with 120-char line length per project standard)
+- Write descriptive variable/function names (snake_case for functions, PascalCase for classes)
+- Fully implement all requested functionality - no TODOs, placeholders, or missing pieces
+- Include all required imports and ensure proper naming
+- Focus on readable, maintainable code over premature optimization
+- Use type hints for public APIs (Optional, List, Dict from typing)
+- Write Google-style docstrings with Args/Returns/Raises sections
+- Do not attempt to run or start the service after modification; leave this to the user
 
 ## Project Overview
 
@@ -50,7 +22,7 @@ AutoVoiceType is a Windows-based intelligent voice input tool written in Python.
 
 **Key Technologies:**
 - PyQt5 for GUI and system tray integration
-- DashScope SDK for real-time speech recognition via WebSocket
+- Real-time speech recognition via WebSocket (DashScope, Doubao)
 - pynput for global keyboard hooks
 - PyAudio for microphone audio capture
 - Multi-strategy text input simulation (clipboard, Win32 API, pyautogui)
@@ -139,11 +111,23 @@ System Interface Layer (Windows API, Global Hook, Clipboard)
 - Callback-based design for loose coupling
 
 **VoiceRecognizer** (src/voice_recognizer.py)
-- Manages WebSocket connection to DashScope API
+- Legacy wrapper maintained for backward compatibility
+- Delegates to recognizer implementations via factory pattern
 - Uses PyAudio to capture microphone audio (16kHz, mono, PCM)
 - Streams audio in 3200-byte chunks
 - Handles recognition events through callback pattern
-- Supports model switching (qwen3-asr-flash-realtime, fun-asr-realtime)
+
+**Recognizer Architecture** (src/recognizers/)
+- Factory pattern for pluggable speech recognition providers
+- BaseRecognizer: Abstract base class defining common interface
+- DashScopeRecognizer: Alibaba Cloud DashScope API integration
+  - Models: qwen3-asr-flash-realtime, fun-asr-realtime
+  - Uses dashscope SDK for WebSocket communication
+- DoubaoRecognizer: ByteDance Doubao ASR integration
+  - Async-to-sync bridge for aiohttp WebSocket
+  - Requires app_id and access_token
+  - Custom protocol implementation (doubao_protocol.py)
+- RecognizerFactory: Creates appropriate recognizer based on config
 
 **TextSimulator** (src/text_simulator.py)
 - 3-tier fallback strategy for maximum app compatibility:
@@ -164,8 +148,17 @@ System Interface Layer (Windows API, Global Hook, Clipboard)
 **Location:** `~/.autovoicetype/config.json`
 
 **Critical Fields:**
-- `api.dashscope_api_key`: Required for speech recognition (from Alibaba Cloud)
-- `api.model`: Recognition model (default: "qwen3-asr-flash-realtime")
+
+*API Configuration (Provider-dependent):*
+- `api.provider`: Recognition provider ("dashscope" | "doubao")
+- For DashScope:
+  - `api.dashscope_api_key`: Alibaba Cloud API key (required)
+  - `api.model`: Recognition model (default: "qwen3-asr-flash-realtime")
+- For Doubao:
+  - `api.doubao_app_id`: ByteDance app ID (required)
+  - `api.doubao_access_token`: ByteDance access token (required)
+
+*Other Settings:*
 - `audio.sample_rate`: Must be 16000 for DashScope compatibility
 - `input.preferred_method`: "clipboard" | "win32" | "pyautogui"
 - `recognition.semantic_punctuation_enabled`: Auto-punctuation toggle
@@ -252,11 +245,20 @@ When user saves settings, the app:
 3. Add UI controls in appropriate SettingsPage
 4. Update docs/SETTINGS_GUIDE.md
 
+**Adding a new speech recognition provider:**
+1. Create new recognizer class in `src/recognizers/` inheriting from BaseRecognizer
+2. Implement required methods: `start_recognition()`, `stop_recognition()`, `is_recording()`
+3. Add provider configuration to `DEFAULT_CONFIG` in ConfigManager
+4. Register provider in RecognizerFactory.create_recognizer()
+5. Add UI selection in Settings → Recognition page
+6. Test with target applications
+
 **Modifying recognition behavior:**
-1. Update VoiceRecognizer with new parameters
-2. Ensure callback signature remains compatible
-3. Add new fields to `api_config` dict
-4. Test with both models (qwen3-asr-flash-realtime, fun-asr-realtime)
+1. Update BaseRecognizer interface if needed (affects all providers)
+2. Update specific recognizer implementation
+3. Ensure callback signature remains compatible
+4. Add new fields to `api_config` dict
+5. Test with all supported models/providers
 
 **Supporting new input methods:**
 1. Add to InputMethod enum in text_simulator.py
@@ -303,7 +305,3 @@ Performance targets:
 - CPU (idle) < 2%
 - CPU (recording) < 25%
 - Recognition latency < 500ms
-
-## When Cursor Rules Don't Apply
-
-The `.cursor/rules/front-end-cursor-rules.mdc` file contains React/Next.js guidelines that DO NOT apply to this Python/PyQt5 project. Ignore React-specific advice when working on this codebase.
